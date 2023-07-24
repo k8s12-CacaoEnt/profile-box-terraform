@@ -64,23 +64,24 @@ module "eks" {
     one = {
       name = "node-group-1"
 
-      instance_types = ["t3.medium"]
+      instance_types = ["t3.medium"] // c5.xlarge
+      key_name        = "profilehub"
+
+      min_size     = 0
+      max_size     = 3
+      desired_size = 0
+    }
+
+    two = {
+      name = "node-group-2"
+
+      instance_types = ["t3.xlarge"]
       key_name        = "profilehub"
 
       min_size     = 1
       max_size     = 3
-      desired_size = 2
+      desired_size = 3
     }
-
-#    two = {
-#      name = "node-group-2"
-#
-#      instance_types = ["t3.small"]
-#
-#      min_size     = 1
-#      max_size     = 2
-#      desired_size = 1
-#    }
   }
 }
     
@@ -208,6 +209,55 @@ resource "aws_security_group" "bastion_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+# redis
+resource "aws_security_group" "redis_sg" {
+  name        = "redis-security-group"
+  description = "Redis Security Group"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    security_groups = [module.eks.node_security_group_id, aws_security_group.bastion_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_elasticache_subnet_group" "example" {
+  name        = "example-subnet-group"
+  description = "Example subnet group for Elasticache"
+  subnet_ids  = module.vpc.private_subnets
+}
+
+resource "aws_elasticache_parameter_group" "example" {
+  name   = "example-parameter-group"
+  family = "redis6.x"
+}
+
+resource "aws_elasticache_replication_group" "example" {
+  description = "Example replication group for Elasticache"
+  replication_group_id         = "example-replication-group"
+  engine_version               = "6.x"
+  node_type                    = "cache.t3.micro"
+#  automatic_failover_enabled   = true
+  subnet_group_name            = aws_elasticache_subnet_group.example.name
+  parameter_group_name         = aws_elasticache_parameter_group.example.name
+  security_group_ids           = [aws_security_group.redis_sg.id]
+}
+
+output "replication_group_endpoint" {
+  value = aws_elasticache_replication_group.example.primary_endpoint_address
+}
+
+
 
 
 
